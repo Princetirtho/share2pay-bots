@@ -8,6 +8,8 @@ import csv
 import io
 import os
 import re
+from threading import Thread
+from flask import Flask
 
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -20,8 +22,22 @@ from telegram.ext import (
     ConversationHandler
 )
 
+# ---------------- DUMMY WEB SERVER FOR RENDER ----------------
+app_flask = Flask('')
+
+@app_flask.route('/')
+def home():
+    return "Bot is Alive and Running!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    app_flask.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run_flask)
+    t.start()
+
 # ---------------- CONFIGURATION ----------------
-# Security Update: Render environment variable used for safety
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8879194338:AAHKmy1727BSe5Ct4S2wXGmBV39Y9UMkGA8")
 
 # Multiple Admin IDs
@@ -354,7 +370,6 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Check if in support conversation - only text messages should go to support
     if context.user_data.get('in_support') and text:
         await receive_support(update, context)
         return
@@ -603,7 +618,6 @@ async def handle_admin_messages(update: Update, context: ContextTypes.DEFAULT_TY
     elif text == "📥 CSV ডাউনলোড":
         try:
             data = export_to_csv()
-            
             output = io.StringIO()
             writer = csv.writer(output)
             
@@ -623,30 +637,16 @@ async def handle_admin_messages(update: Update, context: ContextTypes.DEFAULT_TY
             await update.message.reply_document(
                 document=file_io,
                 filename=f"database_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                caption="📊 **ডাটাবেস ব্যাকআপ**\n\n"
-                       "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                       "✅ ইউজার ডেটা\n"
-                       "✅ ট্রানজেকশন ডেটা\n"
-                       "✅ পেন্ডিং উইথড্র ডেটা\n\n"
-                       "📌 ফাইলটি Excel বা Google Sheets এ খুলতে পারবেন।\n"
-                       "━━━━━━━━━━━━━━━━━━━━━━━━"
+                caption="📊 **ডাটাবেস ব্যাকআপ**"
             )
         except Exception as e:
             logging.error(f"CSV export error: {e}")
-            await update.message.reply_text(
-                "❌ **CSV ফাইল তৈরি করতে সমস্যা হয়েছে!**\n\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "📌 আবার চেষ্টা করুন।\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━"
-            )
+            await update.message.reply_text("❌ **CSV ফাইল তৈরি করতে সমস্যা হয়েছে!**")
 
     elif text == "🔙 ইউজার মোড":
         context.user_data['admin_mode'] = False
         await update.message.reply_text(
-            "👤 **ইউজার মোডে ফিরে গেছেন**\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "📌 আপনি এখন সাধারণ ইউজার হিসেবে ব্যবহার করতে পারবেন।\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━",
+            "👤 **ইউজার মোডে ফিরে গেছেন**",
             reply_markup=get_active_reply_keyboard(user_id)
         )
 
@@ -655,12 +655,7 @@ async def search_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text.strip()
     users = search_users(query)
     if not users:
-        await update.message.reply_text(
-            f"❌ **ইউজার পাওয়া যায়নি!**\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🔍 '{query}' এর সাথে মেলে এমন কোনো ইউজার নেই।\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+        await update.message.reply_text(f"❌ **'{query}' এর কোনো ইউজার পাওয়া যায়নি!**")
         return ConversationHandler.END
     
     msg = "🔍 **সার্চ রেজাল্ট**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -685,23 +680,12 @@ async def user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         user_id = int(update.message.text.strip())
     except ValueError:
-        await update.message.reply_text(
-            "❌ **ভুল ইউজার আইডি!**\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "📝 শুধু সংখ্যা ব্যবহার করুন।\n"
-            "📌 উদাহরণ: `8212595643`\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+        await update.message.reply_text("❌ **ভুল ইউজার আইডি! শুধু সংখ্যা লিখুন।**")
         return USER_DETAILS
     
     user = get_user_details(user_id)
     if not user:
-        await update.message.reply_text(
-            f"❌ **ইউজার পাওয়া যায়নি!**\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🆔 ইউজার আইডি `{user_id}` এর কোনো ইউজার নেই।\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+        await update.message.reply_text(f"❌ **ইউজার আইডি `{user_id}` পাওয়া যায়নি!**")
         return ConversationHandler.END
     
     status = "✅ সক্রিয়" if user[2] == 1 else "❌ নিষ্ক্রিয়"
@@ -709,13 +693,7 @@ async def user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     conn = sqlite3.connect('share2pay.db')
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT type, amount, status, created_at 
-        FROM transactions 
-        WHERE user_id = ? 
-        ORDER BY created_at DESC 
-        LIMIT 5
-    """, (user_id,))
+    cursor.execute("SELECT type, amount, status, created_at FROM transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 5", (user_id,))
     transactions = cursor.fetchall()
     conn.close()
     
@@ -734,8 +712,7 @@ async def user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user[7]:
         msg += f"👤 **রেফারড বাই:** {user[7]}\n"
     
-    msg += f"\n📜 **সর্বশেষ ৫ ট্রানজেকশন:**\n"
-    msg += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    msg += f"\n📜 **সর্বশেষ ৫ ট্রানজেকশন:**\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
     if transactions:
         for txn in transactions:
             txn_type = "ডিপোজিট" if txn[0] == "deposit" else "উইথড্র"
@@ -767,37 +744,18 @@ async def start_activation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def activation_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
     method = update.message.text
     if method == "❌ বাতিল":
-        await update.message.reply_text(
-            "❌ **প্রক্রিয়া বাতিল করা হয়েছে!**\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━",
-            reply_markup=get_active_reply_keyboard(update.effective_user.id)
-        )
+        await update.message.reply_text("❌ **প্রক্রিয়া বাতিল করা হয়েছে!**", reply_markup=get_active_reply_keyboard(update.effective_user.id))
         return ConversationHandler.END
     if method not in ["📱 বিকাশ", "💳 নগদ"]:
-        await update.message.reply_text(
-            "❌ **সঠিক মেথড নির্বাচন করুন!**\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+        await update.message.reply_text("❌ **সঠিক মেথড নির্বাচন করুন!**")
         return ACTIVATION_METHOD
     
     context.user_data['activation_method'] = method
     
     if method == "📱 বিকাশ":
-        await update.message.reply_text(
-            "📱 **বিকাশ পেমেন্ট**\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "আপনার **ফোন নম্বর** অথবা **TxnID** লিখুন:\n\n"
-            "📌 উদাহরণ: `01712345678` অথবা `ABC123XYZ`\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+        await update.message.reply_text("📱 **বিকাশ পেমেন্ট:** আপনার **ফোন নম্বর** অথবা **TxnID** লিখুন:")
     else:
-        await update.message.reply_text(
-            "💳 **নগদ পেমেন্ট**\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "আপনার **ফোন নম্বর** লিখুন:\n\n"
-            "📌 উদাহরণ: `01712345678`\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+        await update.message.reply_text("💳 **নগদ পেমেন্ট:** আপনার **ফোন নম্বর** লিখুন:")
     return TXN_ID
 
 async def receive_txnid(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -821,42 +779,19 @@ async def receive_txnid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     conn.commit()
     conn.close()
 
-    await update.message.reply_text(
-        "✅ **তথ্য জমা হয়েছে!** 📤\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "আপনার পেমেন্ট রিকুয়েস্ট অ্যাডমিনের কাছে পাঠানো হয়েছে।\n"
-        "⏳ অ্যাডমিন চেক করে অ্যাক্টিভেট করবেন।\n\n"
-        "📌 অনুগ্রহ করে অপেক্ষা করুন...\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━"
-    )
+    await update.message.reply_text("✅ **তথ্য জমা হয়েছে!** অ্যাডমিন চেক করে অ্যাক্টিভেট করবেন।")
 
     btn = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ অ্যাপ্রুভ", callback_data=f"app_pay_{txn_db_id}_{user_id}"),
          InlineKeyboardButton("❌ রিজেক্ট", callback_data=f"rej_pay_{txn_db_id}_{user_id}")]
     ])
     
-    method_emoji = "📱" if "বিকাশ" in method else "💳"
-    method_name = method.replace("📱 ", "").replace("💳 ", "")
-    
-    if phone_number:
-        info = f"📱 ফোন নম্বর: `{phone_number}`"
-    else:
-        info = f"🧾 TxnID: `{txn_id}`"
+    info = f"📱 ফোন নম্বর: `{phone_number}`" if phone_number else f"🧾 TxnID: `{txn_id}`"
     
     for admin_id in ADMIN_IDS:
         await context.bot.send_message(
             chat_id=admin_id,
-            text=(
-                f"📥 **নতুন পেমেন্ট**\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🆔 ইউজার আইডি: `{user_id}`\n"
-                f"👤 ইউজারনেম: {username}\n"
-                f"{method_emoji} পেমেন্ট মেথড: {method_name}\n"
-                f"{info}\n"
-                f"💰 পরিমাণ: ৩০ টাকা\n"
-                f"📅 সময়: {datetime.now().strftime('%d %b, %Y %I:%M %p')}\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━"
-            ),
+            text=f"📥 **নতুন পেমেন্ট**\n🆔 আইডি: `{user_id}`\n👤 নাম: {username}\n{info}\n💰 পরিমাণ: ৩০ টাকা",
             reply_markup=btn,
             parse_mode='Markdown'
         )
@@ -871,7 +806,6 @@ async def handle_admin_payment(update: Update, context: ContextTypes.DEFAULT_TYP
     
     conn = sqlite3.connect('share2pay.db')
     cursor = conn.cursor()
-    
     cursor.execute("SELECT username FROM users WHERE user_id = ?", (target_user_id,))
     user_data = cursor.fetchone()
     username = user_data[0] if user_data else "Unknown"
@@ -886,62 +820,21 @@ async def handle_admin_payment(update: Update, context: ContextTypes.DEFAULT_TYP
             referrer_id = ref[0]
             cursor.execute("UPDATE users SET balance=balance+20, total_referrals=total_referrals+1 WHERE user_id=?", (referrer_id,))
             try:
-                await context.bot.send_message(
-                    referrer_id,
-                    "🎉 **রেফারেল বোনাস!**\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "আপনার রেফারেল অ্যাক্টিভ হয়েছে!\n"
-                    "💰 **২০ টাকা** বোনাস যোগ হয়েছে!\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━"
-                )
+                await context.bot.send_message(referrer_id, "🎉 **রেফারেল বোনাস!** আপনার রেফারেলে ২০ টাকা যোগ হয়েছে!")
             except Exception:
                 pass
         conn.commit()
-        
-        await query.edit_message_text(
-            f"✅ **পেমেন্ট অ্যাপ্রুভ করা হয়েছে**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🆔 Txn ID: {txn_db_id}\n"
-            f"👤 ইউজার আইডি: `{target_user_id}`\n"
-            f"👤 ইউজারনেম: {username}\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
-        
+        await query.edit_message_text(f"✅ **অ্যাপ্রুভড:** `{target_user_id}` ({username})")
         try:
-            await context.bot.send_message(
-                chat_id=target_user_id,
-                text=(
-                    "🎉 **অ্যাকাউন্ট অ্যাক্টিভেটেড!** ✨\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    "আপনার পেমেন্ট অ্যাপ্রুভ হয়েছে!\n"
-                    "এখন আপনি আমাদের সকল সেবা পেতে পারেন।\n\n"
-                    "📌 মেনু থেকে অপশন নির্বাচন করুন:\n"
-                    "━━━━━━━━━━━━━━━━━━━━━━━━"
-                ),
-                reply_markup=get_active_reply_keyboard(target_user_id)
-            )
+            await context.bot.send_message(target_user_id, "🎉 **অ্যাকাউন্ট অ্যাক্টিভেটেড!**", reply_markup=get_active_reply_keyboard(target_user_id))
         except Exception:
             pass
     else:
         cursor.execute("UPDATE transactions SET status='rejected' WHERE id=?", (txn_db_id,))
         conn.commit()
-        await query.edit_message_text(
-            f"❌ **পেমেন্ট রিজেক্ট করা হয়েছে**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🆔 Txn ID: {txn_db_id}\n"
-            f"👤 ইউজার আইডি: `{target_user_id}`\n"
-            f"👤 ইউজারনেম: {username}\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+        await query.edit_message_text(f"❌ **রিজেক্টেড:** `{target_user_id}` ({username})")
         try:
-            await context.bot.send_message(
-                target_user_id,
-                "❌ **পেমেন্ট রিজেক্টেড**\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "আপনার পেমেন্ট রিকুয়েস্ট বাতিল করা হয়েছে।\n"
-                "সঠিক তথ্য দিয়ে আবার চেষ্টা করুন।\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━"
-            )
+            await context.bot.send_message(target_user_id, "❌ **পেমেন্ট রিজেক্টেড!**")
         except Exception:
             pass
     conn.close()
@@ -954,7 +847,6 @@ async def handle_admin_withdraw(update: Update, context: ContextTypes.DEFAULT_TY
     
     conn = sqlite3.connect('share2pay.db')
     cursor = conn.cursor()
-    
     cursor.execute("SELECT username FROM users WHERE user_id = ?", (target_user_id,))
     user_data = cursor.fetchone()
     username = user_data[0] if user_data else "Unknown"
@@ -966,53 +858,19 @@ async def handle_admin_withdraw(update: Update, context: ContextTypes.DEFAULT_TY
             cursor.execute("UPDATE users SET balance=balance-?, total_withdraw=total_withdraw+? WHERE user_id=?", (amount, amount, target_user_id))
             cursor.execute("UPDATE pending_withdraws SET status='approved' WHERE id=?", (w_id,))
             conn.commit()
-            await query.edit_message_text(
-                f"✅ **উইথড্র অ্যাপ্রুভ করা হয়েছে**\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🆔 ID: {w_id}\n"
-                f"💵 পরিমাণ: {amount} টাকা\n"
-                f"👤 ইউজার আইডি: `{target_user_id}`\n"
-                f"👤 ইউজারনেম: {username}\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━"
-            )
+            await query.edit_message_text(f"✅ **উইথড্র অ্যাপ্রুভড:** {amount} টাকা (`{target_user_id}`)")
             try:
-                await context.bot.send_message(
-                    target_user_id,
-                    f"✅ **উইথড্র সফল!** 💸\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"আপনার **{amount} টাকা** উইথড্র হয়েছে।\n"
-                    f"আপনার নম্বরে টাকা পাঠানো হবে।\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━━━━"
-                )
+                await context.bot.send_message(target_user_id, f"✅ **{amount} টাকা উইথড্র সফল হয়েছে!**")
             except Exception:
                 pass
         else:
-            await query.edit_message_text(
-                f"❌ **পর্যাপ্ত ব্যালেন্স নেই!**\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"ইউজারের ব্যালেন্স: {curr_bal} টাকা\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━"
-            )
+            await query.edit_message_text("❌ **পর্যাপ্ত ব্যালেন্স নেই!**")
     else:
         cursor.execute("UPDATE pending_withdraws SET status='rejected' WHERE id=?", (w_id,))
         conn.commit()
-        await query.edit_message_text(
-            f"❌ **উইথড্র রিজেক্ট করা হয়েছে**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🆔 ID: {w_id}\n"
-            f"👤 ইউজার আইডি: `{target_user_id}`\n"
-            f"👤 ইউজারনেম: {username}\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+        await query.edit_message_text(f"❌ **উইথড্র রিজেক্টেড:** `{target_user_id}`")
         try:
-            await context.bot.send_message(
-                target_user_id,
-                "❌ **উইথড্র বাতিল**\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "আপনার উইথড্র রিকুয়েস্টটি বাতিল করা হয়েছে।\n"
-                "কারণ সম্পর্কে জানতে সাপোর্টে যোগাযোগ করুন।\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━"
-            )
+            await context.bot.send_message(target_user_id, "❌ **উইথড্র রিকুয়েস্ট বাতিল করা হয়েছে।**")
         except Exception:
             pass
     conn.close()
@@ -1021,159 +879,73 @@ async def handle_admin_withdraw(update: Update, context: ContextTypes.DEFAULT_TY
 async def start_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(update.effective_user.id)
     if user[5] == 0:
-        await update.message.reply_text(
-            "⚠️ **অ্যাকাউন্ট নিষ্ক্রিয়!**\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "উইথড্র করতে প্রথমে অ্যাকাউন্ট অ্যাক্টিভেট করুন।\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+        await update.message.reply_text("⚠️ **উইথড্র করতে প্রথমে অ্যাকাউন্ট অ্যাক্টিভেট করুন।**")
         return ConversationHandler.END
     if user[6] < 60:
-        await update.message.reply_text(
-            f"⚠️ **পর্যাপ্ত ব্যালেন্স নেই!**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💵 আপনার ব্যালেন্স: {user[6]} টাকা\n"
-            f"📌 ন্যূনতম উইথড্র: ৬০ টাকা\n\n"
-            f"👥 রেফার করে আরও টাকা আয় করুন!\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+        await update.message.reply_text(f"⚠️ **পর্যাপ্ত ব্যালেন্স নেই!** (ব্যালেন্স: {user[6]} টাকা, সর্বনিম্ন: ৬০ টাকা)")
         return ConversationHandler.END
-    await update.message.reply_text(
-        "💸 **উইথড্র প্রক্রিয়া**\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "আপনি কোন মেথডে টাকা পেতে চান?\n\n"
-        "📌 মেথড নির্বাচন করুন:\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━",
-        reply_markup=get_payment_method_keyboard()
-    )
+    await update.message.reply_text("💸 **মেথড নির্বাচন করুন:**", reply_markup=get_payment_method_keyboard())
     return WITHDRAW_METHOD
 
 async def withdraw_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
     method = update.message.text
     if method == "❌ বাতিল":
-        await update.message.reply_text(
-            "❌ **প্রক্রিয়া বাতিল করা হয়েছে!**",
-            reply_markup=get_active_reply_keyboard(update.effective_user.id)
-        )
+        await update.message.reply_text("❌ **বাতিল করা হয়েছে!**", reply_markup=get_active_reply_keyboard(update.effective_user.id))
         return ConversationHandler.END
     if method not in ["📱 বিকাশ", "💳 নগদ"]:
-        await update.message.reply_text(
-            "❌ **সঠিক মেথড নির্বাচন করুন!**"
-        )
+        await update.message.reply_text("❌ **সঠিক মেথড নির্বাচন করুন!**")
         return WITHDRAW_METHOD
     
     context.user_data['withdraw_method'] = method
-    method_name = method.replace("📱 ", "").replace("💳 ", "")
-    await update.message.reply_text(
-        f"📱 **{method_name} নম্বর লিখুন:**\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"আপনি যে নম্বরে টাকা পেতে চান:\n\n"
-        f"📌 উদাহরণ: `01712345678`\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━"
-    )
+    await update.message.reply_text("📱 **ফোন নম্বর লিখুন:**")
     return WITHDRAW_PHONE
 
 async def withdraw_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text.strip()
     if not phone.isdigit() or len(phone) != 11:
-        await update.message.reply_text(
-            "❌ **ভুল নম্বর!**\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "সঠিক ১১ ডিজিটের নম্বর দিন:\n"
-            "📌 উদাহরণ: `01712345678`\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+        await update.message.reply_text("❌ **সঠিক ১১ ডিজিটের নম্বর দিন!**")
         return WITHDRAW_PHONE
     context.user_data['withdraw_phone'] = phone
-    await update.message.reply_text(
-        "💰 **উইথড্র পরিমাণ**\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "ন্যূনতম: **৬০ টাকা**\n\n"
-        "📝 আপনি কত টাকা তুলতে চান?\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━"
-    )
+    await update.message.reply_text("💰 **কত টাকা তুলতে চান? (ন্যূনতম ৬০)**")
     return WITHDRAW_AMOUNT
 
 async def withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         amount = int(update.message.text.strip())
     except ValueError:
-        await update.message.reply_text(
-            "❌ **সঠিক সংখ্যা লিখুন!**\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "শুধু সংখ্যা ব্যবহার করুন।\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+        await update.message.reply_text("❌ **সঠিক সংখ্যা লিখুন!**")
         return WITHDRAW_AMOUNT
     
     user_id = update.effective_user.id
     user = get_user(user_id)
     
-    if amount < 60:
-        await update.message.reply_text(
-            f"❌ **ন্যূনতম ৬০ টাকা!**\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"আপনি {amount} টাকা দিয়েছেন।\n"
-            f"ন্যূনতম ৬০ টাকা প্রয়োজন।\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
-        return WITHDRAW_AMOUNT
-    
-    if amount > user[6]:
-        await update.message.reply_text(
-            f"❌ **পর্যাপ্ত ব্যালেন্স নেই!**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💵 আপনার ব্যালেন্স: {user[6]} টাকা\n"
-            f"💸 আপনি চেয়েছেন: {amount} টাকা\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
+    if amount < 60 or amount > user[6]:
+        await update.message.reply_text("❌ **ভুল পরিমাণ দেওয়া হয়েছে!**")
         return WITHDRAW_AMOUNT
 
     phone = context.user_data.get('withdraw_phone')
     username = user[1]
     method = context.user_data.get('withdraw_method', '📱 বিকাশ')
-    method_name = method.replace("📱 ", "").replace("💳 ", "")
 
     conn = sqlite3.connect('share2pay.db')
     cursor = conn.cursor()
-    cursor.execute("""
-        INSERT INTO pending_withdraws (user_id, username, amount, phone_number, method, created_at) 
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, (user_id, username, amount, phone, method, datetime.now()))
+    cursor.execute("INSERT INTO pending_withdraws (user_id, username, amount, phone_number, method, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                   (user_id, username, amount, phone, method, datetime.now()))
     w_id = cursor.lastrowid
     conn.commit()
     conn.close()
 
-    await update.message.reply_text(
-        f"✅ **উইথড্র রিকুয়েস্ট জমা হয়েছে!** 📤\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"💵 পরিমাণ: **{amount} টাকা**\n"
-        f"📱 {method_name}: `{phone}`\n\n"
-        f"⏳ অ্যাডমিনের অনুমোদনের জন্য অপেক্ষা করুন।\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━━━"
-    )
+    await update.message.reply_text(f"✅ **উইথড্র রিকুয়েস্ট জমা হয়েছে!** ({amount} টাকা)")
 
     btn = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ অ্যাপ্রুভ", callback_data=f"app_w_{w_id}_{user_id}_{amount}"),
          InlineKeyboardButton("❌ রিজেক্ট", callback_data=f"rej_w_{w_id}_{user_id}_{amount}")]
     ])
     
-    method_emoji = "📱" if "বিকাশ" in method else "💳"
-    
     for admin_id in ADMIN_IDS:
         await context.bot.send_message(
             chat_id=admin_id,
-            text=(
-                f"📤 **নতুন উইথড্র**\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"🆔 ইউজার আইডি: `{user_id}`\n"
-                f"👤 ইউজারনেম: {username}\n"
-                f"{method_emoji} উইথড্র মেথড: {method_name}\n"
-                f"📱 নম্বর: `{phone}`\n"
-                f"💵 পরিমাণ: {amount} টাকা\n"
-                f"📅 সময়: {datetime.now().strftime('%d %b, %Y %I:%M %p')}\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━"
-            ),
+            text=f"📤 **নতুন উইথড্র**\n🆔 আইডি: `{user_id}`\n📱 নম্বর: `{phone}`\n💵 পরিমাণ: {amount} টাকা",
             reply_markup=btn,
             parse_mode='Markdown'
         )
@@ -1181,13 +953,7 @@ async def withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- SUPPORT ----------------
 async def start_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "🆘 **সাপোর্ট সেন্টার**\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "আপনার সমস্যা বিস্তারিত লিখুন:\n\n"
-        "📌 আমরা ২৪ ঘন্টার মধ্যে রিপ্লাই দেব।\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━"
-    )
+    await update.message.reply_text("🆘 **আপনার সমস্যা বিস্তারিত লিখুন:**")
     context.user_data['in_support'] = True
     return SUPPORT_MSG
 
@@ -1196,57 +962,31 @@ async def receive_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
     
-    # Only process if it's text message and not a command/button
     if not msg or msg.startswith('/'):
         return
     
-    # Remove support mode
     context.user_data['in_support'] = False
     
     for admin_id in ADMIN_IDS:
         await context.bot.send_message(
             chat_id=admin_id,
-            text=(
-                f"📩 **নতুন সাপোর্ট মেসেজ**\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"👤 ইউজার আইডি: `{user_id}`\n"
-                f"👤 ইউজারনেম: {user[1] if user else 'N/A'}\n"
-                f"💬 বার্তা:\n{msg}\n"
-                f"📅 সময়: {datetime.now().strftime('%d %b, %Y %I:%M %p')}\n"
-                f"━━━━━━━━━━━━━━━━━━━━━━━━"
-            ),
+            text=f"📩 **সাপোর্ট মেসেজ**\n🆔 আইডি: `{user_id}`\n💬 বার্তা: {msg}",
             parse_mode='Markdown'
         )
     
-    await update.message.reply_text(
-        "✅ **আপনার বার্তা পাঠানো হয়েছে!** 📨\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "আমরা খুব শীঘ্রই আপনার সাথে যোগাযোগ করব।\n\n"
-        "📌 ধৈর্য ধরার জন্য ধন্যবাদ!\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━"
-    )
+    await update.message.reply_text("✅ **বার্তা পাঠানো হয়েছে!**")
     return ConversationHandler.END
 
 # ---------------- OTHER ----------------
 async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
-        await update.message.reply_text("⛔ **আপনি অ্যাডমিন নন!**")
         return
     context.user_data['admin_mode'] = True
-    await update.message.reply_text(
-        "🔐 **অ্যাডমিন প্যানেল**\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-        "📌 নিচের বাটন থেকে নির্বাচন করুন:\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━",
-        reply_markup=get_admin_reply_keyboard()
-    )
+    await update.message.reply_text("🔐 **অ্যাডমিন প্যানেল**", reply_markup=get_admin_reply_keyboard())
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['in_support'] = False
-    await update.message.reply_text(
-        "❌ **প্রক্রিয়া বাতিল করা হয়েছে!**\n\n"
-        "━━━━━━━━━━━━━━━━━━━━━━━━"
-    )
+    await update.message.reply_text("❌ **প্রক্রিয়া বাতিল করা হয়েছে!**")
     return ConversationHandler.END
 
 async def copy_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1257,9 +997,11 @@ async def copy_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- MAIN ----------------
 def main():
+    # Render-এর পোর্ট ইস্যু এড়াতে ব্যাকগ্রাউন্ড ডামি সার্ভার চালু
+    keep_alive()
+
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Registration
     reg_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
@@ -1269,7 +1011,6 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    # Activation
     activation_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^✅ অ্যাকাউন্ট অ্যাক্টিভেট করুন$'), start_activation)],
         states={
@@ -1279,7 +1020,6 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    # Withdraw
     withdraw_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^💸 উইথড্র$'), start_withdraw)],
         states={
@@ -1290,7 +1030,6 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    # Support
     support_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^🆘 সাপোর্ট$'), start_support)],
         states={
@@ -1299,7 +1038,6 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    # Admin Search
     admin_search_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^🔍 ইউজার খুঁজুন$'), handle_admin_messages)],
         states={
@@ -1308,7 +1046,6 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    # Admin Details
     admin_details_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^📋 ইউজার ডিটেইলস$'), handle_admin_messages)],
         states={
@@ -1317,7 +1054,6 @@ def main():
         fallbacks=[CommandHandler('cancel', cancel)]
     )
 
-    # Add handlers
     app.add_handler(reg_handler)
     app.add_handler(activation_handler)
     app.add_handler(withdraw_handler)
@@ -1330,11 +1066,9 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_admin_payment, pattern='^(app_pay|rej_pay)_'))
     app.add_handler(CallbackQueryHandler(handle_admin_withdraw, pattern='^(app_w|rej_w)_'))
     
-    # Main message handler
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_messages))
 
     print("🤖 Share2Pay Bot is running...")
-    print(f"👥 Admin IDs: {ADMIN_IDS}")
     app.run_polling()
 
 if __name__ == '__main__':
