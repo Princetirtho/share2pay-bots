@@ -43,18 +43,15 @@ if not BOT_TOKEN:
     print("ERROR: BOT_TOKEN environment variable not set")
     exit(1)
 
-# Multiple Admin IDs
 ADMIN_IDS_STR = os.environ.get("ADMIN_IDS", "8212595643,8235339975")
 ADMIN_IDS = [int(x.strip()) for x in ADMIN_IDS_STR.split(",") if x.strip()]
 
-# Payment Numbers
 BKASH_NUMBERS = ["01709780713", "01572972953"]
 NAGAD_NUMBERS = ["01922799136"]
 
 # Conversation States
 USERNAME, PASSWORD, TXN_ID, WITHDRAW_PHONE, WITHDRAW_AMOUNT, SUPPORT_MSG, SEARCH_USER, USER_DETAILS, ACTIVATION_METHOD, WITHDRAW_METHOD, BROADCAST_TEXT, BROADCAST_IMAGE_WAIT, ADMIN_REPLY = range(13)
 
-# Logging Setup
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -239,12 +236,12 @@ def get_cancel_keyboard():
     keyboard = [[KeyboardButton("❌ বাতিল")]]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ---------------- START COMMAND (FIXED) ----------------
+# ---------------- START COMMAND & REGISTRATION ----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.clear()
     user_id = update.effective_user.id
     user = get_user(user_id)
 
-    # Check for referral
     if context.args:
         ref_code = context.args[0].replace("ref_", "")
         conn = sqlite3.connect('share2pay.db')
@@ -256,7 +253,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
     if not user:
-        # New user - start registration
         await update.message.reply_text(
             "✨ **শেয়ার2পে বটে আপনাকে স্বাগতম!** ✨\n\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -268,8 +264,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return USERNAME
     
-    # Existing user
-    if user[5] == 1:  # Active
+    if user[5] == 1:
         if is_admin(user_id) and context.user_data.get('admin_mode', False):
             await update.message.reply_text(
                 "🔐 **অ্যাডমিন প্যানেল**\n\n"
@@ -288,7 +283,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=get_active_reply_keyboard(user_id),
                 parse_mode='Markdown'
             )
-    else:  # Inactive
+    else:
         await update.message.reply_text(
             "⚠️ **অ্যাকাউন্ট ইনঅ্যাক্টিভ**\n\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -299,7 +294,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     return ConversationHandler.END
 
-# ---------------- REGISTRATION HANDLERS ----------------
 async def set_username(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = update.message.text.strip()
     
@@ -401,7 +395,6 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Check if in support mode - BUT allow cancel
     if context.user_data.get('in_support'):
         if text == "❌ বাতিল":
             context.user_data['in_support'] = False
@@ -637,26 +630,6 @@ async def handle_admin_messages(update: Update, context: ContextTypes.DEFAULT_TY
                 parse_mode='Markdown'
             )
 
-    elif text == "🔍 ইউজার খুঁজুন":
-        await update.message.reply_text(
-            "🔍 **ইউজার খুঁজুন**\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "📝 ইউজার আইডি অথবা ইউজারনেম লিখুন:\n"
-            "📌 উদাহরণ: `8212595643` অথবা `john_doe`\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
-        return SEARCH_USER
-
-    elif text == "📋 ইউজার ডিটেইলস":
-        await update.message.reply_text(
-            "👤 **ইউজার ডিটেইলস**\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "📝 ইউজার আইডি লিখুন:\n"
-            "📌 উদাহরণ: `8212595643`\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
-        return USER_DETAILS
-
     elif text == "📥 CSV ডাউনলোড":
         try:
             data = export_to_csv()
@@ -685,19 +658,6 @@ async def handle_admin_messages(update: Update, context: ContextTypes.DEFAULT_TY
             logging.error(f"CSV export error: {e}")
             await update.message.reply_text("❌ **CSV ফাইল তৈরি করতে সমস্যা হয়েছে!**")
 
-    elif text == "📢 ব্রডকাস্ট":
-        if not is_admin(user_id):
-            return
-        await update.message.reply_text(
-            "📢 **ব্রডকাস্ট সিস্টেম**\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "📝 সব ইউজারকে টেক্সট পাঠান:\n"
-            "🖼️ ছবি পাঠাতে চাইলে /broadcast_image\n"
-            "❌ 'বাতিল' লিখে বাতিল করুন",
-            reply_markup=get_cancel_keyboard()
-        )
-        return BROADCAST_TEXT
-
     elif text == "🔙 ইউজার মোড":
         context.user_data['admin_mode'] = False
         await update.message.reply_text(
@@ -706,6 +666,16 @@ async def handle_admin_messages(update: Update, context: ContextTypes.DEFAULT_TY
         )
 
 # ---------------- SEARCH & DETAILS ----------------
+async def search_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "🔍 **ইউজার খুঁজুন**\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📝 ইউজার আইডি অথবা ইউজারনেম লিখুন:\n"
+        "📌 উদাহরণ: `8212595643` অথবা `john_doe`\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━"
+    )
+    return SEARCH_USER
+
 async def search_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.message.text.strip()
     users = search_users(query)
@@ -730,6 +700,16 @@ async def search_user(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     await update.message.reply_text(msg, parse_mode='Markdown')
     return ConversationHandler.END
+
+async def user_details_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "👤 **ইউজার ডিটেইলস**\n\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📝 ইউজার আইডি লিখুন:\n"
+        "📌 উদাহরণ: `8212595643`\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━"
+    )
+    return USER_DETAILS
 
 async def user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
@@ -783,9 +763,8 @@ async def user_details(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(msg, parse_mode='Markdown')
     return ConversationHandler.END
 
-# ---------------- ACTIVATION (FIXED) ----------------
+# ---------------- ACTIVATION ----------------
 async def start_activation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Clear previous data
     context.user_data.clear()
     
     msg = (
@@ -804,12 +783,11 @@ async def start_activation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def activation_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
     method = update.message.text
     
-    # Check for cancel
     if method == "❌ বাতিল" or method.lower() == "বাতিল":
         context.user_data.clear()
         await update.message.reply_text(
             "❌ **প্রক্রিয়া বাতিল করা হয়েছে!**",
-            reply_markup=get_active_reply_keyboard(update.effective_user.id)
+            reply_markup=get_pending_reply_keyboard()
         )
         return ConversationHandler.END
     
@@ -832,7 +810,7 @@ async def activation_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "📌 ফোন: `017xxxxxxxx`\n\n"
             "❌ 'বাতিল' লিখে প্রক্রিয়া বাতিল করুন"
         )
-    else:  # নগদ
+    else:
         await update.message.reply_text(
             "💳 **নগদ পেমেন্ট**\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -845,12 +823,11 @@ async def activation_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def receive_txnid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
     
-    # Check for cancel
-    if user_input.lower() in ["বাতিল", "cancel"]:
+    if user_input.lower() in ["বাতিল", "cancel", "❌ বাতিল"]:
         context.user_data.clear()
         await update.message.reply_text(
             "❌ **প্রক্রিয়া বাতিল করা হয়েছে!**",
-            reply_markup=get_active_reply_keyboard(update.effective_user.id)
+            reply_markup=get_pending_reply_keyboard()
         )
         return ConversationHandler.END
     
@@ -859,19 +836,15 @@ async def receive_txnid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     username = user[1] if user else "Unknown"
     method = context.user_data.get('activation_method', '📱 বিকাশ')
     
-    # Check if input is phone number (11 digits)
     is_phone = user_input.isdigit() and len(user_input) == 11
     
-    # Validate based on method
     if method == "📱 বিকাশ":
-        # Both phone number or TxnID allowed
         if is_phone:
             phone_number = user_input
             txn_id = None
         else:
             phone_number = None
             txn_id = user_input
-            # TxnID should be at least 5 characters
             if len(txn_id) < 5:
                 await update.message.reply_text(
                     "❌ **ভুল TxnID!**\n\n"
@@ -879,8 +852,7 @@ async def receive_txnid(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "আবার TxnID বা ফোন নম্বর দিন:"
                 )
                 return TXN_ID
-    else:  # নগদ
-        # Only phone number allowed
+    else:
         if not is_phone:
             await update.message.reply_text(
                 "❌ **ভুল ইনপুট!**\n\n"
@@ -892,7 +864,6 @@ async def receive_txnid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         phone_number = user_input
         txn_id = None
     
-    # Save to database
     conn = sqlite3.connect('share2pay.db')
     cursor = conn.cursor()
     cursor.execute("""
@@ -907,20 +878,17 @@ async def receive_txnid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✅ **তথ্য জমা হয়েছে!**\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "⏳ অ্যাডমিন চেক করে আপনার অ্যাকাউন্ট অ্যাক্টিভেট করবেন।\n"
-        "📌 সাধারণত ৫-১০ মিনিট সময় লাগে।"
+        "📌 সাধারণত ৫-১০ মিনিট সময় লাগে।",
+        reply_markup=get_pending_reply_keyboard()
     )
     
-    # Notify admins
     btn = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ অ্যাপ্রুভ", callback_data=f"app_pay_{txn_db_id}_{user_id}"),
          InlineKeyboardButton("❌ রিজেক্ট", callback_data=f"rej_pay_{txn_db_id}_{user_id}")]
     ])
     
     if method == "📱 বিকাশ":
-        if txn_id:
-            info = f"🧾 TxnID: `{txn_id}`"
-        else:
-            info = f"📱 ফোন: `{phone_number}`"
+        info = f"🧾 TxnID: `{txn_id}`" if txn_id else f"📱 ফোন: `{phone_number}`"
     else:
         info = f"📱 ফোন: `{phone_number}`"
     
@@ -1029,7 +997,7 @@ async def handle_admin_withdraw(update: Update, context: ContextTypes.DEFAULT_TY
             pass
     conn.close()
 
-# ---------------- WITHDRAW (FIXED) ----------------
+# ---------------- WITHDRAW ----------------
 async def start_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(update.effective_user.id)
     if user[5] == 0:
@@ -1085,7 +1053,7 @@ async def withdraw_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def withdraw_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone = update.message.text.strip()
     
-    if phone.lower() in ["বাতিল", "cancel"]:
+    if phone.lower() in ["বাতিল", "cancel", "❌ বাতিল"]:
         context.user_data.clear()
         await update.message.reply_text(
             "❌ **প্রক্রিয়া বাতিল!**",
@@ -1111,7 +1079,7 @@ async def withdraw_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     
-    if text.lower() in ["বাতিল", "cancel"]:
+    if text.lower() in ["বাতিল", "cancel", "❌ বাতিল"]:
         context.user_data.clear()
         await update.message.reply_text(
             "❌ **প্রক্রিয়া বাতিল!**",
@@ -1161,10 +1129,10 @@ async def withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"✅ **উইথড্র রিকুয়েস্ট জমা হয়েছে!**\n\n"
         f"💵 পরিমাণ: {amount} টাকা\n"
-        f"⏳ অ্যাডমিন অ্যাপ্রুভ করলে টাকা পাবেন।"
+        f"⏳ অ্যাডমিন অ্যাপ্রুভ করলে টাকা পাবেন।",
+        reply_markup=get_active_reply_keyboard(user_id)
     )
 
-    # Notify admins with full info
     btn = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ অ্যাপ্রুভ", callback_data=f"app_w_{w_id}_{user_id}_{amount}"),
          InlineKeyboardButton("❌ রিজেক্ট", callback_data=f"rej_w_{w_id}_{user_id}_{amount}")]
@@ -1194,7 +1162,7 @@ async def withdraw_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     return ConversationHandler.END
 
-# ---------------- SUPPORT (FIXED) ----------------
+# ---------------- SUPPORT ----------------
 async def start_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.clear()
     context.user_data['in_support'] = True
@@ -1212,7 +1180,6 @@ async def start_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def receive_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
     
-    # "বাতিল" চেক
     if msg in ["❌ বাতিল", "বাতিল", "cancel"]:
         context.user_data.clear()
         await update.message.reply_text(
@@ -1221,7 +1188,6 @@ async def receive_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
     
-    # অন্য কোনো বাটন চেক
     if msg in ["👤 প্রোফাইল", "📤 রেফার", "💰 ব্যালেন্স", "💸 উইথড্র", "❓ কিভাবে করবেন?", "✅ অ্যাকাউন্ট অ্যাক্টিভেট করুন"]:
         await update.message.reply_text(
             "⚠️ **সাপোর্ট মোডে আছেন!**\n"
@@ -1233,14 +1199,12 @@ async def receive_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = get_user(user_id)
     user_info = get_user_details(user_id)
     
-    # ইউজারের সব ইনফো
     tg_username = update.effective_user.username or "N/A"
     tg_first_name = update.effective_user.first_name or "N/A"
     bot_username = (await context.bot.get_me()).username
     
     context.user_data['in_support'] = False
     
-    # ডিটেইলস সহ মেসেজ
     support_msg = (
         f"📩 **সাপোর্ট টিকেট**\n"
         f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -1260,12 +1224,10 @@ async def receive_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏰ সময়: {datetime.now().strftime('%d %b, %Y %I:%M %p')}"
     )
     
-    # রিপ্লাই বাটন
     reply_btn = InlineKeyboardMarkup([
         [InlineKeyboardButton("💬 রিপ্লাই", callback_data=f"reply_{user_id}")]
     ])
     
-    # সব অ্যাডমিনকে পাঠান
     for admin_id in ADMIN_IDS:
         try:
             await context.bot.send_message(
@@ -1277,7 +1239,6 @@ async def receive_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logging.error(f"Support message send error: {e}")
     
-    # ইউজারকে কনফার্মেশন
     await update.message.reply_text(
         "✅ **সাপোর্ট মেসেজ পাঠানো হয়েছে!**\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -1309,13 +1270,13 @@ async def admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def send_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text.strip()
     
-    if msg.lower() in ["বাতিল", "cancel"]:
-        await update.message.reply_text("❌ **রিপ্লাই বাতিল!**")
+    if msg.lower() in ["বাতিল", "cancel", "❌ বাতিল"]:
+        await update.message.reply_text("❌ **রিপ্লাই বাতিল!**", reply_markup=get_admin_reply_keyboard())
         return ConversationHandler.END
     
     user_id = context.user_data.get('reply_to_user')
     if not user_id:
-        await update.message.reply_text("❌ **ইউজার আইডি পাওয়া যায়নি!**")
+        await update.message.reply_text("❌ **ইউজার আইডি পাওয়া যায়নি!**", reply_markup=get_admin_reply_keyboard())
         return ConversationHandler.END
     
     try:
@@ -1326,17 +1287,30 @@ async def send_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
                  f"{msg}\n"
                  f"━━━━━━━━━━━━━━━━━━━━━━━━"
         )
-        await update.message.reply_text("✅ **রিপ্লাই পাঠানো হয়েছে!**")
+        await update.message.reply_text("✅ **রিপ্লাই পাঠানো হয়েছে!**", reply_markup=get_admin_reply_keyboard())
     except Exception as e:
-        await update.message.reply_text(f"❌ **পাঠাতে সমস্যা!**\n{str(e)}")
+        await update.message.reply_text(f"❌ **পাঠাতে সমস্যা!**\n{str(e)}", reply_markup=get_admin_reply_keyboard())
     
     return ConversationHandler.END
 
 # ---------------- BROADCAST ----------------
-async def broadcast_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start_broadcast_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id):
+        return ConversationHandler.END
+    await update.message.reply_text(
+        "📢 **ব্রডকাস্ট সিস্টেম**\n"
+        "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        "📝 সব ইউজারকে টেক্সট পাঠান:\n"
+        "🖼️ ছবি পাঠাতে চাইলে /broadcast_image\n"
+        "❌ 'বাতিল' লিখে বাতিল করুন",
+        reply_markup=get_cancel_keyboard()
+    )
+    return BROADCAST_TEXT
+
+async def send_broadcast_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text.strip()
     
-    if msg.lower() in ["বাতিল", "cancel"]:
+    if msg.lower() in ["বাতিল", "cancel", "❌ বাতিল"]:
         await update.message.reply_text(
             "❌ **ব্রডকাস্ট বাতিল!**",
             reply_markup=get_admin_reply_keyboard()
@@ -1346,7 +1320,7 @@ async def broadcast_text_handler(update: Update, context: ContextTypes.DEFAULT_T
     users = get_all_active_users()
     
     if not users:
-        await update.message.reply_text("❌ **কোনো সক্রিয় ইউজার নেই!**")
+        await update.message.reply_text("❌ **কোনো সক্রিয় ইউজার নেই!**", reply_markup=get_admin_reply_keyboard())
         return ConversationHandler.END
     
     success = 0
@@ -1377,7 +1351,7 @@ async def broadcast_text_handler(update: Update, context: ContextTypes.DEFAULT_T
 
 async def broadcast_image_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
-        return
+        return ConversationHandler.END
     
     await update.message.reply_text(
         "🖼️ **ব্রডকাস্ট ইমেজ**\n"
@@ -1389,8 +1363,7 @@ async def broadcast_image_command(update: Update, context: ContextTypes.DEFAULT_
     return BROADCAST_IMAGE_WAIT
 
 async def handle_broadcast_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Check for cancel (if user sends text "বাতিল")
-    if update.message.text and update.message.text.lower() in ["বাতিল", "cancel"]:
+    if update.message.text and update.message.text.lower() in ["বাতিল", "cancel", "❌ বাতিল"]:
         await update.message.reply_text(
             "❌ **ব্রডকাস্ট বাতিল!**",
             reply_markup=get_admin_reply_keyboard()
@@ -1407,7 +1380,7 @@ async def handle_broadcast_image(update: Update, context: ContextTypes.DEFAULT_T
     users = get_all_active_users()
     
     if not users:
-        await update.message.reply_text("❌ **কোনো সক্রিয় ইউজার নেই!**")
+        await update.message.reply_text("❌ **কোনো সক্রিয় ইউজার নেই!**", reply_markup=get_admin_reply_keyboard())
         return ConversationHandler.END
     
     success = 0
@@ -1467,12 +1440,9 @@ def main():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # ============ START COMMAND (সবার আগে) ============
-    app.add_handler(CommandHandler('start', start))
-
-    # ============ REGISTRATION ============
+    # ============ REGISTRATION (FIXED ENTRY POINT) ============
     reg_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, set_username)],
+        entry_points=[CommandHandler('start', start)],
         states={
             USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_username)],
             PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_password)],
@@ -1481,7 +1451,7 @@ def main():
     )
     app.add_handler(reg_handler)
 
-    # ============ ACTIVATION (FIXED) ============
+    # ============ ACTIVATION ============
     activation_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^✅ অ্যাকাউন্ট অ্যাক্টিভেট করুন$'), start_activation)],
         states={
@@ -1492,7 +1462,7 @@ def main():
     )
     app.add_handler(activation_handler)
 
-    # ============ WITHDRAW (FIXED) ============
+    # ============ WITHDRAW ============
     withdraw_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^💸 উইথড্র$'), start_withdraw)],
         states={
@@ -1504,7 +1474,7 @@ def main():
     )
     app.add_handler(withdraw_handler)
 
-    # ============ SUPPORT (FIXED) ============
+    # ============ SUPPORT ============
     support_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^🆘 সাপোর্ট$'), start_support)],
         states={
@@ -1516,7 +1486,7 @@ def main():
 
     # ============ ADMIN SEARCH ============
     admin_search_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex('^🔍 ইউজার খুঁজুন$'), handle_admin_messages)],
+        entry_points=[MessageHandler(filters.Regex('^🔍 ইউজার খুঁজুন$'), search_user_start)],
         states={
             SEARCH_USER: [MessageHandler(filters.TEXT & ~filters.COMMAND, search_user)],
         },
@@ -1526,7 +1496,7 @@ def main():
 
     # ============ ADMIN DETAILS ============
     admin_details_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex('^📋 ইউজার ডিটেইলস$'), handle_admin_messages)],
+        entry_points=[MessageHandler(filters.Regex('^📋 ইউজার ডিটেইলস$'), user_details_start)],
         states={
             USER_DETAILS: [MessageHandler(filters.TEXT & ~filters.COMMAND, user_details)],
         },
@@ -1545,24 +1515,24 @@ def main():
     app.add_handler(admin_reply_handler)
 
     # ============ BROADCAST TEXT ============
-    broadcast_text_handler = ConversationHandler(
-        entry_points=[MessageHandler(filters.Regex('^📢 ব্রডকাস্ট$'), handle_admin_messages)],
+    broadcast_text_conv = ConversationHandler(
+        entry_points=[MessageHandler(filters.Regex('^📢 ব্রডকাস্ট$'), start_broadcast_text)],
         states={
-            BROADCAST_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, broadcast_text_handler)],
+            BROADCAST_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, send_broadcast_text)],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
-    app.add_handler(broadcast_text_handler)
+    app.add_handler(broadcast_text_conv)
 
     # ============ BROADCAST IMAGE ============
-    broadcast_image_handler = ConversationHandler(
+    broadcast_image_conv = ConversationHandler(
         entry_points=[CommandHandler('broadcast_image', broadcast_image_command)],
         states={
             BROADCAST_IMAGE_WAIT: [MessageHandler(filters.PHOTO | filters.TEXT, handle_broadcast_image)],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
-    app.add_handler(broadcast_image_handler)
+    app.add_handler(broadcast_image_conv)
 
     # ============ OTHER HANDLERS ============
     app.add_handler(CommandHandler('admin', admin_command))
@@ -1571,7 +1541,7 @@ def main():
     app.add_handler(CallbackQueryHandler(handle_admin_payment, pattern='^(app_pay|rej_pay)_'))
     app.add_handler(CallbackQueryHandler(handle_admin_withdraw, pattern='^(app_w|rej_w)_'))
     
-    # ============ MAIN MESSAGE HANDLER (সবার শেষে) ============
+    # ============ MAIN MESSAGE HANDLER ============
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_messages))
 
     print("🤖 Share2Pay Bot is running...")
