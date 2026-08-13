@@ -239,11 +239,12 @@ def get_cancel_keyboard():
     keyboard = [[KeyboardButton("❌ বাতিল")]]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# ---------------- MAIN START HANDLER ----------------
+# ---------------- START COMMAND (FIXED) ----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     user = get_user(user_id)
 
+    # Check for referral
     if context.args:
         ref_code = context.args[0].replace("ref_", "")
         conn = sqlite3.connect('share2pay.db')
@@ -255,6 +256,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
     if not user:
+        # New user - start registration
         await update.message.reply_text(
             "✨ **শেয়ার2পে বটে আপনাকে স্বাগতম!** ✨\n\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -266,7 +268,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return USERNAME
     
-    if user[5] == 1:
+    # Existing user
+    if user[5] == 1:  # Active
         if is_admin(user_id) and context.user_data.get('admin_mode', False):
             await update.message.reply_text(
                 "🔐 **অ্যাডমিন প্যানেল**\n\n"
@@ -278,14 +281,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             await update.message.reply_text(
-                "🎉 **স্বাগতম!** 🎉\n\n"
+                "🎉 **স্বাগতম ফিরে!** 🎉\n\n"
                 "━━━━━━━━━━━━━━━━━━━━━━━━\n"
                 "📌 আপনার প্রয়োজনীয় অপশন নির্বাচন করুন:\n"
                 "━━━━━━━━━━━━━━━━━━━━━━━━",
                 reply_markup=get_active_reply_keyboard(user_id),
                 parse_mode='Markdown'
             )
-    else:
+    else:  # Inactive
         await update.message.reply_text(
             "⚠️ **অ্যাকাউন্ট ইনঅ্যাক্টিভ**\n\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -802,7 +805,7 @@ async def activation_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
     method = update.message.text
     
     # Check for cancel
-    if method == "❌ বাতिल" or method.lower() == "বাতিল":
+    if method == "❌ বাতিল" or method.lower() == "বাতিল":
         context.user_data.clear()
         await update.message.reply_text(
             "❌ **প্রক্রিয়া বাতিল করা হয়েছে!**",
@@ -1298,7 +1301,8 @@ async def admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🆔 ইউজার আইডি: `{user_id}`\n\n"
         f"📝 আপনার রিপ্লাই লিখুন:\n"
         f"❌ 'বাতিল' লিখে বাতিল করুন",
-        parse_mode='Markdown'
+        parse_mode='Markdown',
+        reply_markup=get_cancel_keyboard()
     )
     return ADMIN_REPLY
 
@@ -1385,16 +1389,17 @@ async def broadcast_image_command(update: Update, context: ContextTypes.DEFAULT_
     return BROADCAST_IMAGE_WAIT
 
 async def handle_broadcast_image(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.message.photo:
-        await update.message.reply_text("❌ **দয়া করে একটি ছবি পাঠান!**")
-        return BROADCAST_IMAGE_WAIT
-    
+    # Check for cancel (if user sends text "বাতিল")
     if update.message.text and update.message.text.lower() in ["বাতিল", "cancel"]:
         await update.message.reply_text(
             "❌ **ব্রডকাস্ট বাতিল!**",
             reply_markup=get_admin_reply_keyboard()
         )
         return ConversationHandler.END
+    
+    if not update.message.photo:
+        await update.message.reply_text("❌ **দয়া করে একটি ছবি পাঠান!**")
+        return BROADCAST_IMAGE_WAIT
     
     photo = update.message.photo[-1]
     caption = update.message.caption or ""
@@ -1462,17 +1467,21 @@ def main():
 
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
-    # Registration
+    # ============ START COMMAND (সবার আগে) ============
+    app.add_handler(CommandHandler('start', start))
+
+    # ============ REGISTRATION ============
     reg_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
+        entry_points=[MessageHandler(filters.TEXT & ~filters.COMMAND, set_username)],
         states={
             USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_username)],
             PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, set_password)],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
+    app.add_handler(reg_handler)
 
-    # Activation (FIXED)
+    # ============ ACTIVATION (FIXED) ============
     activation_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^✅ অ্যাকাউন্ট অ্যাক্টিভেট করুন$'), start_activation)],
         states={
@@ -1481,8 +1490,9 @@ def main():
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
+    app.add_handler(activation_handler)
 
-    # Withdraw (FIXED)
+    # ============ WITHDRAW (FIXED) ============
     withdraw_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^💸 উইথড্র$'), start_withdraw)],
         states={
@@ -1492,8 +1502,9 @@ def main():
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
+    app.add_handler(withdraw_handler)
 
-    # Support (FIXED)
+    # ============ SUPPORT (FIXED) ============
     support_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^🆘 সাপোর্ট$'), start_support)],
         states={
@@ -1501,8 +1512,9 @@ def main():
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
+    app.add_handler(support_handler)
 
-    # Admin Search
+    # ============ ADMIN SEARCH ============
     admin_search_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^🔍 ইউজার খুঁজুন$'), handle_admin_messages)],
         states={
@@ -1510,8 +1522,9 @@ def main():
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
+    app.add_handler(admin_search_handler)
 
-    # Admin Details
+    # ============ ADMIN DETAILS ============
     admin_details_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^📋 ইউজার ডিটেইলস$'), handle_admin_messages)],
         states={
@@ -1519,8 +1532,9 @@ def main():
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
+    app.add_handler(admin_details_handler)
 
-    # Admin Reply
+    # ============ ADMIN REPLY ============
     admin_reply_handler = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_reply, pattern='^reply_')],
         states={
@@ -1528,8 +1542,9 @@ def main():
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
+    app.add_handler(admin_reply_handler)
 
-    # Broadcast Text
+    # ============ BROADCAST TEXT ============
     broadcast_text_handler = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^📢 ব্রডকাস্ট$'), handle_admin_messages)],
         states={
@@ -1537,33 +1552,26 @@ def main():
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
+    app.add_handler(broadcast_text_handler)
 
-    # Broadcast Image
+    # ============ BROADCAST IMAGE ============
     broadcast_image_handler = ConversationHandler(
         entry_points=[CommandHandler('broadcast_image', broadcast_image_command)],
         states={
-            BROADCAST_IMAGE_WAIT: [MessageHandler(filters.PHOTO, handle_broadcast_image)],
+            BROADCAST_IMAGE_WAIT: [MessageHandler(filters.PHOTO | filters.TEXT, handle_broadcast_image)],
         },
         fallbacks=[CommandHandler('cancel', cancel)]
     )
-
-    # Add handlers
-    app.add_handler(reg_handler)
-    app.add_handler(activation_handler)
-    app.add_handler(withdraw_handler)
-    app.add_handler(support_handler)
-    app.add_handler(admin_search_handler)
-    app.add_handler(admin_details_handler)
-    app.add_handler(admin_reply_handler)
-    app.add_handler(broadcast_text_handler)
     app.add_handler(broadcast_image_handler)
 
+    # ============ OTHER HANDLERS ============
     app.add_handler(CommandHandler('admin', admin_command))
     app.add_handler(CommandHandler('cancel', cancel))
     app.add_handler(CallbackQueryHandler(copy_link, pattern='^copy_'))
     app.add_handler(CallbackQueryHandler(handle_admin_payment, pattern='^(app_pay|rej_pay)_'))
     app.add_handler(CallbackQueryHandler(handle_admin_withdraw, pattern='^(app_w|rej_w)_'))
     
+    # ============ MAIN MESSAGE HANDLER (সবার শেষে) ============
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_messages))
 
     print("🤖 Share2Pay Bot is running...")
