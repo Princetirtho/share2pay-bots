@@ -889,13 +889,23 @@ async def start_activation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def activation_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
     method = update.message.text
+    user_id = update.effective_user.id
+    user = get_user(user_id)  # 👈 ইউজার তথ্য নিন
+    
     if method == "❌ বাতিল":
+        # ইউজার অ্যাক্টিভ কিনা চেক করুন
+        if user and user[5] == 1:  # যদি অ্যাক্টিভ হয়
+            reply_markup = get_active_reply_keyboard(user_id)
+        else:  # যদি ইনঅ্যাক্টিভ হয়
+            reply_markup = get_pending_reply_keyboard()
+            
         await update.message.reply_text(
             "❌ **প্রক্রিয়া বাতিল করা হয়েছে!**\n\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━",
-            reply_markup=get_active_reply_keyboard(update.effective_user.id)
+            reply_markup=reply_markup
         )
         return ConversationHandler.END
+        
     if method not in ["📱 বিকাশ", "💳 নগদ"]:
         await update.message.reply_text(
             "❌ **সঠিক মেথড নির্বাচন করুন!**\n\n"
