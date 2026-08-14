@@ -8,6 +8,8 @@ import csv
 import io
 import os
 import re
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -160,6 +162,18 @@ def export_to_csv():
         all_data[table] = {'columns': columns, 'rows': rows}
     conn.close()
     return all_data
+
+# ---------------- DUMMY HTTP SERVER FOR RENDER ----------------
+class DummyHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+def run_dummy_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(('0.0.0.0', port), DummyHandler)
+    server.serve_forever()
 
 # ---------------- REPLY KEYBOARDS ----------------
 def get_pending_reply_keyboard():
@@ -854,7 +868,7 @@ async def receive_txnid(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     btn = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ অ্যাপ্রুভ", callback_data=f"app_pay_{txn_db_id}_{user_id}"),
-         InlineKeyboardButton("❌ রিজেক্ট", callback_data=f"rej_pay_{txn_db_id}_{user_id}")]
+         [InlineKeyboardButton("❌ রিজেক্ট", callback_data=f"rej_pay_{txn_db_id}_{user_id}")]
     ])
     
     method_emoji = "📱" if "বিকাশ" in method else "💳"
@@ -1478,6 +1492,9 @@ async def copy_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- MAIN ----------------
 def main():
+    # ডামি HTTP সার্ভার চালু করার জন্য থ্রেড (Render-এর জন্য প্রয়োজন)
+    threading.Thread(target=run_dummy_server, daemon=True).start()
+    
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     # Registration
