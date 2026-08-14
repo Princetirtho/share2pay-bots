@@ -29,7 +29,7 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "8879194338:AAG2jzvbLH_EDXuz3pFeuoGWQFmv
 ADMIN_IDS = [8212595643, 8235339975]
 
 # Conversation States
-USERNAME, PASSWORD, TXN_ID, WITHDRAW_PHONE, WITHDRAW_AMOUNT, SUPPORT_MSG, SEARCH_USER, USER_DETAILS, ACTIVATION_METHOD, WITHDRAW_METHOD = range(10)
+USERNAME, PASSWORD, TXN_ID, WITHDRAW_PHONE, WITHDRAW_AMOUNT, SUPPORT_MSG, SEARCH_USER, USER_DETAILS, ACTIVATION_METHOD, WITHDRAW_METHOD, ADMIN_REPLY = range(12)
 
 # Logging Setup
 logging.basicConfig(
@@ -83,6 +83,20 @@ def init_db():
             method TEXT,
             status TEXT DEFAULT 'pending',
             created_at TIMESTAMP
+        )
+    ''')
+    
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS support_tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            username TEXT,
+            tg_username TEXT,
+            message TEXT,
+            status TEXT DEFAULT 'pending',
+            admin_reply TEXT,
+            created_at TIMESTAMP,
+            replied_at TIMESTAMP
         )
     ''')
     
@@ -198,7 +212,7 @@ def get_admin_reply_keyboard():
         [KeyboardButton("💳 পেন্ডিং পেমেন্ট"), KeyboardButton("📤 পেন্ডিং উইথড্র")],
         [KeyboardButton("🔍 ইউজার খুঁজুন"), KeyboardButton("📋 ইউজার ডিটেইলস")],
         [KeyboardButton("📥 CSV ডাউনলোড"), KeyboardButton("🔄 ডেটাবেস রিস্টোর")],
-        [KeyboardButton("🔙 ইউজার মোড")]
+        [KeyboardButton("📩 সাপোর্ট টিকেট"), KeyboardButton("🔙 ইউজার মোড")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
@@ -368,7 +382,12 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Check if in support conversation - only text messages should go to support
+    # Check if admin is replying to support
+    if context.user_data.get('admin_reply_mode'):
+        await handle_admin_reply(update, context)
+        return
+
+    # Check if in support conversation
     if context.user_data.get('in_support') and text:
         await receive_support(update, context)
         return
@@ -383,9 +402,9 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "━━━━━━━━━━━━━━━━━━━━━━━━\n"
             "🔹 **অ্যাকাউন্ট অ্যাক্টিভেশন:**\n"
             "• ৩০ টাকা বিকাশ/নগদ পাঠান\n"
-            "• 📱 নম্বর: `01572972953`\n"
-            "• বিকাশ: ফোন নম্বর অথবা TxnID\n"
-            "• নগদ: শুধু ফোন নম্বর\n\n"
+            "• 📱 বিকাশ নম্বর: `01572972953`, `01709780713`\n"
+            "• 💳 নগদ নম্বর: `01922799136`, `01572972953`\n"
+            "• যে কোনো একটি নম্বরে ৩০ টাকা পাঠান\n\n"
             "🔹 **রেফারেল বোনাস:**\n"
             "• প্রতি সফল রেফারেলে ২০ টাকা\n\n"
             "🔹 **উইথড্র:**\n"
@@ -473,28 +492,60 @@ async def handle_admin_messages(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = update.effective_user.id
     
     if text == "👥 ইউজার লিস্ট":
-        users = get_all_users()
-        if not users:
-            await update.message.reply_text("📭 **কোনো ইউজার নেই!**")
-            return
-        msg = "👥 **ইউজার লিস্ট**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        for i, user in enumerate(users[:20], 1):
-            status = "✅" if user[2] == 1 else "❌"
-            join_date = datetime.strptime(user[6], '%Y-%m-%d %H:%M:%S.%f').strftime('%d %b, %Y')
-            msg += (
-                f"**{i}. ইউজার**\n"
-                f"🆔 আইডি: `{user[0]}`\n"
-                f"👤 নাম: {user[1]}\n"
-                f"⚡ স্ট্যাটাস: {status}\n"
-                f"💰 ব্যালেন্স: {user[3]} টাকা\n"
-                f"👥 রেফার: {user[4]} জন\n"
-                f"💸 উইথড্র: {user[5]} টাকা\n"
-                f"📅 জয়েন: {join_date}\n"
+        try:
+            users = get_all_users()
+            
+            if not users or len(users) == 0:
+                await update.message.reply_text(
+                    "📭 **কোনো ইউজার নেই!**\n\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "ডেটাবেসে কোনো ইউজার পাওয়া যায়নি।\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━"
+                )
+                return
+            
+            msg = "👥 **ইউজার লিস্ট**\n━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            for i, user in enumerate(users[:20], 1):
+                try:
+                    status = "✅" if user[2] == 1 else "❌"
+                    join_date = "Unknown"
+                    try:
+                        join_date = datetime.strptime(user[6], '%Y-%m-%d %H:%M:%S.%f').strftime('%d %b, %Y')
+                    except:
+                        try:
+                            join_date = datetime.strptime(user[6], '%Y-%m-%d %H:%M:%S').strftime('%d %b, %Y')
+                        except:
+                            join_date = str(user[6])
+                    
+                    msg += (
+                        f"**{i}. ইউজার**\n"
+                        f"🆔 আইডি: `{user[0]}`\n"
+                        f"👤 নাম: {user[1] if user[1] else 'N/A'}\n"
+                        f"⚡ স্ট্যাটাস: {status}\n"
+                        f"💰 ব্যালেন্স: {user[3]} টাকা\n"
+                        f"👥 রেফার: {user[4]} জন\n"
+                        f"💸 উইথড্র: {user[5]} টাকা\n"
+                        f"📅 জয়েন: {join_date}\n"
+                        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    )
+                except Exception as e:
+                    logging.error(f"Error formatting user {i}: {e}")
+                    continue
+                    
+            if len(users) > 20:
+                msg += f"\n📌 মোট {len(users)} জন। প্রথম ২০ জন দেখানো হয়েছে।"
+                
+            await update.message.reply_text(msg, parse_mode='Markdown')
+            
+        except Exception as e:
+            logging.error(f"User list error: {e}")
+            await update.message.reply_text(
+                f"❌ **ইউজার লিস্ট দেখাতে সমস্যা!**\n\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"সমস্যা: `{str(e)}`\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━",
+                parse_mode='Markdown'
             )
-        if len(users) > 20:
-            msg += f"\n📌 মোট {len(users)} জন। প্রথম ২০ জন দেখানো হয়েছে।"
-        await update.message.reply_text(msg, parse_mode='Markdown')
 
     elif text == "📊 পরিসংখ্যান":
         conn = sqlite3.connect('share2pay.db')
@@ -511,6 +562,8 @@ async def handle_admin_messages(update: Update, context: ContextTypes.DEFAULT_TY
         pending = cursor.fetchone()[0]
         cursor.execute("SELECT SUM(amount) FROM pending_withdraws WHERE status='approved'")
         withdrawn = cursor.fetchone()[0] or 0
+        cursor.execute("SELECT COUNT(*) FROM support_tickets WHERE status='pending'")
+        support_pending = cursor.fetchone()[0]
         conn.close()
         msg = (
             f"📊 **সার্বিক পরিসংখ্যান**\n"
@@ -520,7 +573,8 @@ async def handle_admin_messages(update: Update, context: ContextTypes.DEFAULT_TY
             f"💰 **মোট ব্যালেন্স:** {balance} টাকা\n"
             f"💵 **মোট ডিপোজিট:** {deposits * 30} টাকা\n"
             f"💸 **মোট উইথড্র:** {withdrawn} টাকা\n"
-            f"📌 **পেন্ডিং:** {pending}\n"
+            f"📌 **পেন্ডিং পেমেন্ট:** {pending}\n"
+            f"📩 **পেন্ডিং সাপোর্ট:** {support_pending}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━"
         )
         await update.message.reply_text(msg, parse_mode='Markdown')
@@ -655,7 +709,6 @@ async def handle_admin_messages(update: Update, context: ContextTypes.DEFAULT_TY
             )
 
     elif text == "🔄 ডেটাবেস রিস্টোর":
-        # ইনলাইন কীবোর্ড তৈরি করুন
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ হ্যাঁ, রিস্টোর করো", callback_data="confirm_restore")],
             [InlineKeyboardButton("❌ না, বাতিল করো", callback_data="cancel_restore")]
@@ -675,6 +728,36 @@ async def handle_admin_messages(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup=keyboard,
             parse_mode='Markdown'
         )
+
+    elif text == "📩 সাপোর্ট টিকেট":
+        conn = sqlite3.connect('share2pay.db')
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, user_id, username, tg_username, message, created_at FROM support_tickets WHERE status='pending' ORDER BY created_at DESC")
+        tickets = cursor.fetchall()
+        conn.close()
+        
+        if not tickets:
+            await update.message.reply_text("📌 **কোনো পেন্ডিং সাপোর্ট টিকেট নেই!**")
+            return
+        
+        for ticket in tickets:
+            btn = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💬 রিপ্লাই দেন", callback_data=f"reply_ticket_{ticket[0]}_{ticket[1]}")]
+            ])
+            
+            await update.message.reply_text(
+                f"📩 **সাপোর্ট টিকেট**\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🆔 টিকেট আইডি: `{ticket[0]}`\n"
+                f"👤 ইউজার আইডি: `{ticket[1]}`\n"
+                f"👤 ইউজারনেম: {ticket[2]}\n"
+                f"📱 টেলিগ্রাম: @{ticket[3] if ticket[3] else 'N/A'}\n"
+                f"💬 বার্তা:\n{ticket[4]}\n"
+                f"📅 সময়: {ticket[5]}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━",
+                reply_markup=btn,
+                parse_mode='Markdown'
+            )
 
     elif text == "🔙 ইউজার মোড":
         context.user_data['admin_mode'] = False
@@ -791,7 +874,11 @@ async def start_activation(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "💳 **অ্যাকাউন্ট অ্যাক্টিভেশন**\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━\n"
         "অ্যাক্টিভ করতে **৩০ টাকা** পাঠান:\n\n"
-        "📱 **বিকাশ/নগদ (Personal)**\n"
+        "📱 **বিকাশ নম্বর:**\n"
+        "`01572972953`\n"
+        "`01709780713`\n\n"
+        "💳 **নগদ নম্বর:**\n"
+        "`01922799136`\n"
         "`01572972953`\n\n"
         "💰 পরিমাণ: **৩০ টাকা**\n\n"
         "📌 পেমেন্ট মেথড নির্বাচন করুন:\n"
@@ -866,7 +953,6 @@ async def receive_txnid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "━━━━━━━━━━━━━━━━━━━━━━━━"
     )
 
-    # Fixed: Corrected bracket syntax
     btn = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ অ্যাপ্রুভ", callback_data=f"app_pay_{txn_db_id}_{user_id}"),
          InlineKeyboardButton("❌ রিজেক্ট", callback_data=f"rej_pay_{txn_db_id}_{user_id}")]
@@ -1232,26 +1318,44 @@ async def receive_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message.text
     user_id = update.effective_user.id
     user = get_user(user_id)
+    tg_username = update.effective_user.username or "N/A"
     
-    # Only process if it's text message and not a command/button
     if not msg or msg.startswith('/'):
         return
     
-    # Remove support mode
+    # Save to database
+    conn = sqlite3.connect('share2pay.db')
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO support_tickets (user_id, username, tg_username, message, created_at)
+        VALUES (?, ?, ?, ?, ?)
+    """, (user_id, user[1] if user else "Unknown", tg_username, msg, datetime.now()))
+    ticket_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    
     context.user_data['in_support'] = False
     
+    # Send to all admins with reply button
     for admin_id in ADMIN_IDS:
+        btn = InlineKeyboardMarkup([
+            [InlineKeyboardButton("💬 রিপ্লাই দেন", callback_data=f"reply_ticket_{ticket_id}_{user_id}")]
+        ])
+        
         await context.bot.send_message(
             chat_id=admin_id,
             text=(
-                f"📩 **নতুন সাপোর্ট মেসেজ**\n"
+                f"📩 **নতুন সাপোর্ট টিকেট**\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🆔 টিকেট আইডি: `{ticket_id}`\n"
                 f"👤 ইউজার আইডি: `{user_id}`\n"
                 f"👤 ইউজারনেম: {user[1] if user else 'N/A'}\n"
+                f"📱 টেলিগ্রাম: @{tg_username}\n"
                 f"💬 বার্তা:\n{msg}\n"
                 f"📅 সময়: {datetime.now().strftime('%d %b, %Y %I:%M %p')}\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━━"
             ),
+            reply_markup=btn,
             parse_mode='Markdown'
         )
     
@@ -1263,6 +1367,87 @@ async def receive_support(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "━━━━━━━━━━━━━━━━━━━━━━━━"
     )
     return ConversationHandler.END
+
+# ---------------- ADMIN REPLY TO SUPPORT ----------------
+async def handle_admin_reply_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    data = query.data.split('_')
+    ticket_id = int(data[2])
+    user_id = int(data[3])
+    
+    context.user_data['admin_reply_ticket_id'] = ticket_id
+    context.user_data['admin_reply_user_id'] = user_id
+    context.user_data['admin_reply_mode'] = True
+    
+    await query.edit_message_text(
+        f"💬 **রিপ্লাই দেন**\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 টিকেট আইডি: `{ticket_id}`\n"
+        f"👤 ইউজার আইডি: `{user_id}`\n\n"
+        f"📝 আপনার রিপ্লাই লিখুন:\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━",
+        parse_mode='Markdown'
+    )
+
+async def handle_admin_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reply_text = update.message.text
+    ticket_id = context.user_data.get('admin_reply_ticket_id')
+    user_id = context.user_data.get('admin_reply_user_id')
+    
+    if not ticket_id or not user_id:
+        context.user_data['admin_reply_mode'] = False
+        await update.message.reply_text("❌ কিছু ভুল হয়েছে! আবার চেষ্টা করুন।")
+        return
+    
+    # Save admin reply to database
+    conn = sqlite3.connect('share2pay.db')
+    cursor = conn.cursor()
+    cursor.execute("""
+        UPDATE support_tickets 
+        SET status='replied', admin_reply=?, replied_at=? 
+        WHERE id=?
+    """, (reply_text, datetime.now(), ticket_id))
+    conn.commit()
+    conn.close()
+    
+    # Send reply to user
+    try:
+        await context.bot.send_message(
+            chat_id=user_id,
+            text=(
+                f"📩 **সাপোর্ট রিপ্লাই**\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"অ্যাডমিনের রিপ্লাই:\n\n"
+                f"{reply_text}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"📌 আরও সমস্যা থাকলে আবার লিখুন।"
+            ),
+            parse_mode='Markdown'
+        )
+        
+        await update.message.reply_text(
+            f"✅ **রিপ্লাই পাঠানো হয়েছে!** 📨\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🆔 টিকেট আইডি: `{ticket_id}`\n"
+            f"👤 ইউজার আইডি: `{user_id}`\n"
+            f"💬 রিপ্লাই:\n{reply_text}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━",
+            parse_mode='Markdown'
+        )
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ **রিপ্লাই পাঠাতে ব্যর্থ!**\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"সমস্যা: `{str(e)}`\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━━",
+            parse_mode='Markdown'
+        )
+    
+    context.user_data['admin_reply_mode'] = False
+    context.user_data['admin_reply_ticket_id'] = None
+    context.user_data['admin_reply_user_id'] = None
 
 # ---------------- DATABASE RESTORE ----------------
 async def handle_restore_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1479,6 +1664,7 @@ async def admin_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['in_support'] = False
+    context.user_data['admin_reply_mode'] = False
     await update.message.reply_text(
         "❌ **প্রক্রিয়া বাতিল করা হয়েছে!**\n\n"
         "━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -1495,6 +1681,14 @@ async def copy_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     # ডামি HTTP সার্ভার চালু করার জন্য থ্রেড (Render-এর জন্য প্রয়োজন)
     threading.Thread(target=run_dummy_server, daemon=True).start()
+    
+    # ডেটাবেস চেক
+    conn = sqlite3.connect('share2pay.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM users")
+    count = cursor.fetchone()[0]
+    print(f"📊 Database has {count} users")
+    conn.close()
     
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -1568,6 +1762,7 @@ def main():
     app.add_handler(CallbackQueryHandler(copy_link, pattern='^copy_'))
     app.add_handler(CallbackQueryHandler(handle_admin_payment, pattern='^(app_pay|rej_pay)_'))
     app.add_handler(CallbackQueryHandler(handle_admin_withdraw, pattern='^(app_w|rej_w)_'))
+    app.add_handler(CallbackQueryHandler(handle_admin_reply_callback, pattern='^reply_ticket_'))
     
     # ডেটাবেস রিস্টোর কলব্যাক হ্যান্ডলার
     app.add_handler(CallbackQueryHandler(confirm_restore, pattern='^confirm_restore$'))
