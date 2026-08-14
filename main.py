@@ -21,7 +21,7 @@ from telegram.ext import (
 )
 
 # ---------------- CONFIGURATION ----------------
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8879194338:AAHKmy1727BSe5Ct4S2wXGmBV39Y9UMkGA8")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8879194338:AAG2jzvbLH_EDXuz3pFeuoGWQFmvCZM_w_A")
 
 # Multiple Admin IDs
 ADMIN_IDS = [8212595643, 8235339975]
