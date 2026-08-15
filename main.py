@@ -417,50 +417,50 @@ async def handle_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(msg, parse_mode='Markdown')
 
     elif "প্রোফাইল" in text:
-    try:
-        user_details = get_user_details(user_id)
-        if not user_details:
-            await update.message.reply_text("❌ আপনার প্রোফাইল খুঁজে পাওয়া যায়নি!")
-            return
-            
-        status = "✅ সক্রিয়" if user_details[2] == 1 else "❌ নিষ্ক্রিয়"
-        
-        # তারিখ ফরম্যাট করার চেষ্টা
         try:
-            join_date = datetime.strptime(user_details[6], '%Y-%m-%d %H:%M:%S.%f').strftime('%d %b, %Y')
-        except:
-            try:
-                join_date = datetime.strptime(user_details[6], '%Y-%m-%d %H:%M:%S').strftime('%d %b, %Y')
-            except:
-                join_date = str(user_details[6])
-        
-        msg = (
-            f"👤 **আপনার প্রোফাইল**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"🆔 **ইউজার আইডি:** `{user_details[0]}`\n"
-            f"👤 **ইউজারনেম:** {user_details[1]}\n"
-            f"⚡ **স্ট্যাটাস:** {status}\n"
-            f"💰 **ব্যালেন্স:** {user_details[3]} টাকা\n"
-            f"👥 **মোট রেফার:** {user_details[4]} জন\n"
-            f"💸 **মোট উইথড্র:** {user_details[5]} টাকা\n"
-            f"📅 **জয়েন তারিখ:** {join_date}\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━"
-        )
-        
-        if user_details[7]:
-            msg += f"\n👤 **রেফারড বাই:** {user_details[7]}"
+            user_details = get_user_details(user_id)
+            if not user_details:
+                await update.message.reply_text("❌ আপনার প্রোফাইল খুঁজে পাওয়া যায়নি!")
+                return
+                
+            status = "✅ সক্রিয়" if user_details[2] == 1 else "❌ নিষ্ক্রিয়"
             
-        await update.message.reply_text(msg, parse_mode='Markdown')
-        
-    except Exception as e:
-        logging.error(f"Profile error: {e}")
-        await update.message.reply_text(
-            f"❌ **প্রোফাইল দেখাতে সমস্যা!**\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"সমস্যা: `{str(e)}`\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━",
-            parse_mode='Markdown'
-       ) 
+            # তারিখ ফরম্যাট করার চেষ্টা
+            try:
+                join_date = datetime.strptime(user_details[6], '%Y-%m-%d %H:%M:%S.%f').strftime('%d %b, %Y')
+            except:
+                try:
+                    join_date = datetime.strptime(user_details[6], '%Y-%m-%d %H:%M:%S').strftime('%d %b, %Y')
+                except:
+                    join_date = str(user_details[6])
+            
+            msg = (
+                f"👤 **আপনার প্রোফাইল**\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🆔 **ইউজার আইডি:** `{user_details[0]}`\n"
+                f"👤 **ইউজারনেম:** {user_details[1]}\n"
+                f"⚡ **স্ট্যাটাস:** {status}\n"
+                f"💰 **ব্যালেন্স:** {user_details[3]} টাকা\n"
+                f"👥 **মোট রেফার:** {user_details[4]} জন\n"
+                f"💸 **মোট উইথড্র:** {user_details[5]} টাকা\n"
+                f"📅 **জয়েন তারিখ:** {join_date}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+            
+            if user_details[7]:
+                msg += f"\n👤 **রেফারড বাই:** {user_details[7]}"
+                
+            await update.message.reply_text(msg, parse_mode='Markdown')
+            
+        except Exception as e:
+            logging.error(f"Profile error: {e}")
+            await update.message.reply_text(
+                f"❌ **প্রোফাইল দেখাতে সমস্যা!**\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"সমস্যা: `{str(e)}`\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━",
+                parse_mode='Markdown'
+            ) 
 
     elif text == "📤 রেফার":
         if user[5] == 0:
