@@ -936,6 +936,33 @@ async def activation_method(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def receive_txnid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text.strip()
     user_id = update.effective_user.id
+    
+    # 1. বাতিল চেক
+    if user_input == "❌ বাতিল":
+        user = get_user(user_id)
+        if user and user[5] == 1:
+            reply_markup = get_active_reply_keyboard(user_id)
+        else:
+            reply_markup = get_pending_reply_keyboard()
+            
+        await update.message.reply_text(
+            "❌ **প্রক্রিয়া বাতিল করা হয়েছে!**\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━",
+            reply_markup=reply_markup
+        )
+        return ConversationHandler.END
+    
+    # 2. আবার মেথড সিলেক্ট চেক
+    if user_input in ["📱 বিকাশ", "💳 নগদ"]:
+        await update.message.reply_text(
+            "❌ **আপনি ইতিমধ্যে পেমেন্ট মেথড সিলেক্ট করেছেন!**\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "📌 অনুগ্রহ করে আপনার **ফোন নম্বর** অথবা **TxnID** লিখুন:\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━"
+        )
+        return TXN_ID
+    
+    # 3. ফোন নম্বর বা TxnID প্রসেস করুন
     user = get_user(user_id)
     username = user[1] if user else "Unknown"
     method = context.user_data.get('activation_method', '📱 বিকাশ')
@@ -944,6 +971,18 @@ async def receive_txnid(update: Update, context: ContextTypes.DEFAULT_TYPE):
     phone_number = user_input if is_phone else None
     txn_id = user_input if not is_phone else None
     
+    # 4. ভ্যালিডেশন
+    if not is_phone and len(user_input) < 4:
+        await update.message.reply_text(
+            "❌ **ভুল তথ্য!**\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "📌 সঠিক ফোন নম্বর (১১ ডিজিট) অথবা TxnID লিখুন:\n"
+            "📌 উদাহরণ: `01712345678` অথবা `ABC123XYZ`\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━"
+        )
+        return TXN_ID
+    
+    # 5. ডেটাবেসে সেভ করুন
     conn = sqlite3.connect('share2pay.db')
     cursor = conn.cursor()
     cursor.execute("""
@@ -963,6 +1002,7 @@ async def receive_txnid(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "━━━━━━━━━━━━━━━━━━━━━━━━"
     )
 
+    # 6. অ্যাডমিনে নোটিফিকেশন
     btn = InlineKeyboardMarkup([
         [InlineKeyboardButton("✅ অ্যাপ্রুভ", callback_data=f"app_pay_{txn_db_id}_{user_id}"),
          InlineKeyboardButton("❌ রিজেক্ট", callback_data=f"rej_pay_{txn_db_id}_{user_id}")]
