@@ -1066,17 +1066,33 @@ async def handle_admin_payment(update: Update, context: ContextTypes.DEFAULT_TYP
             f"👤 ইউজারনেম: {username}\n"
             f"━━━━━━━━━━━━━━━━━━━━━━━━"
         )
+        
         try:
+            user = get_user(target_user_id)
+            
+            if user and user[5] == 1:
+                reply_markup = get_active_reply_keyboard(target_user_id)
+                msg = "❌ **পেমেন্ট রিজেক্টেড**\n\nআপনার পেমেন্ট রিকুয়েস্ট বাতিল করা হয়েছে।"
+            else:
+                reply_markup = get_pending_reply_keyboard()
+                msg = (
+                    "❌ **পেমেন্ট রিজেক্টেড**\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "আপনার পেমেন্ট রিকুয়েস্ট বাতিল করা হয়েছে।\n"
+                    "সঠিক তথ্য দিয়ে আবার চেষ্টা করুন।\n\n"
+                    "📌 **অ্যাকাউন্ট অ্যাক্টিভেট করুন** বাটনে ক্লিক করুন।\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━━━"
+                )
+            
             await context.bot.send_message(
                 target_user_id,
-                "❌ **পেমেন্ট রিজেক্টেড**\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━\n"
-                "আপনার পেমেন্ট রিকুয়েস্ট বাতিল করা হয়েছে।\n"
-                "সঠিক তথ্য দিয়ে আবার চেষ্টা করুন।\n"
-                "━━━━━━━━━━━━━━━━━━━━━━━━"
+                msg,
+                reply_markup=reply_markup
             )
-        except Exception:
-            pass
+            
+        except Exception as e:
+            logging.error(f"Error sending reject message: {e}")
+    
     conn.close()
 
 async def handle_admin_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
